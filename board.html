@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sealed Prediction Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Instrument+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a projector-friendly wall of envelopes; sealed ones show a wax seal, revealed ones flip to the text. */
+  :root {
+    --night: #12141f;        /* page */
+    --night-2: #1b1e2d;      /* header band, inputs */
+    --paper: #ece6da;        /* envelope */
+    --paper-ink: #2a2733;    /* text on paper */
+    --wax: #b3264f;          /* seal + accent */
+    --wax-glow: #e0517a;
+    --chalk: #e9e8f2;        /* text on night */
+    --dim: #9a9cb3;          /* secondary text on night */
+    --paper-dim: #6d6878;    /* secondary text on paper */
+    --ok: #2f8f63;
+    --line: #2c3045;
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--night);
+    color: var(--chalk);
+    font: 16px/1.5 var(--body);
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding-block: 28px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    gap: 28px;
+  }
+
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px 32px; }
+  h1 {
+    font: 800 clamp(2rem, 4.5vw, 3.6rem)/1 var(--display);
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h1 em { font-style: normal; color: var(--wax-glow); }
+  .sub { margin: 8px 0 0; color: var(--dim); max-width: 60ch; }
+  .stats { display: flex; gap: 24px; align-items: end; font-variant-numeric: tabular-nums; }
+  .stat b { display: block; font: 800 2.4rem/1 var(--display); }
+  .stat span { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); }
+  .live { display: inline-flex; align-items: center; gap: 8px; font: 500 0.8rem var(--mono); color: var(--dim); }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  .live.on i { background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: pulse 2s infinite; }
+  .live.err i { background: var(--wax-glow); }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 8px transparent; } }
+
+  form.settings {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--night-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px;
+  }
+  form.settings label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  form.settings input {
+    flex: 1 1 320px; min-width: 0;
+    font: 0.95rem var(--mono); color: var(--chalk);
+    background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  }
+  form.settings button {
+    font: 600 0.9rem var(--body); color: #fff; background: var(--wax);
+    border: 0; border-radius: 6px; padding: 9px 16px; cursor: pointer;
+  }
+  form.settings button:hover { background: var(--wax-glow); }
+  :focus-visible { outline: 2px solid var(--wax-glow); outline-offset: 2px; }
+
+  .notice { color: var(--dim); margin: 0; }
+  .notice.err { color: var(--wax-glow); }
+
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 22px; }
+
+  .card { perspective: 1200px; min-height: 230px; text-decoration: none; color: inherit; display: block; }
+  .inner {
+    position: relative; height: 100%; min-height: 230px;
+    transform-style: preserve-3d; transition: transform 0.9s cubic-bezier(.3,1.4,.5,1);
+  }
+  .card.revealed .inner { transform: rotateY(180deg); }
+  .face {
+    position: absolute; inset: 0; backface-visibility: hidden;
+    border-radius: 12px; padding: 18px;
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--paper); color: var(--paper-ink);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .front {
+    /* envelope flap */
+    background:
+      linear-gradient(to bottom right, transparent 49.5%, rgba(42,39,51,.08) 50%) top left / 50% 46% no-repeat,
+      linear-gradient(to bottom left, transparent 49.5%, rgba(42,39,51,.08) 50%) top right / 50% 46% no-repeat,
+      var(--paper);
+    align-items: center; justify-content: center; text-align: center;
+  }
+  .seal {
+    width: 74px; height: 74px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--wax-glow), var(--wax) 60%, #7d1636);
+    display: grid; place-items: center;
+    color: #f6d6df; font: 800 1.5rem var(--display);
+    box-shadow: 0 3px 0 #6b1230, 0 6px 14px rgba(0,0,0,.3);
+  }
+  .back { transform: rotateY(180deg); }
+  .tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--paper-dim); }
+  .fp { font: 500 0.85rem var(--mono); color: var(--paper-ink); overflow-wrap: anywhere; }
+  .meta { margin-top: auto; display: flex; justify-content: space-between; gap: 8px; font: 0.78rem var(--mono); color: var(--paper-dim); }
+  .text {
+    font: 500 clamp(1.15rem, 1.6vw, 1.45rem)/1.3 var(--display);
+    margin: 0; overflow-wrap: anywhere; text-wrap: pretty;
+  }
+  .verified { font-size: 0.8rem; color: var(--ok); font-weight: 600; }
+  .timeline { font: 0.78rem/1.5 var(--mono); color: var(--paper-dim); }
+  .card.example .face { opacity: .72; }
+  .card.example .front::after, .card.example .back::after {
+    content: "Example"; position: absolute; top: 10px; right: 12px;
+    font: 600 0.65rem var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--paper-dim);
+  }
+  .card.just-revealed .back { animation: glow 2.4s ease-out 0.6s; }
+  @keyframes glow { 0% { box-shadow: 0 0 0 0 var(--wax-glow); } 100% { box-shadow: 0 0 0 26px transparent; } }
+
+  footer { color: var(--dim); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 20px; display: grid; gap: 6px; }
+  footer p { margin: 0; }
+  footer .tagline { font: 500 clamp(1.1rem, 1.8vw, 1.4rem)/1.3 var(--display); color: var(--chalk); text-wrap: balance; }
+  footer code { font-family: var(--mono); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inner { transition: none; }
+    .live.on i, .card.just-revealed .back { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Sealed <em>Predictions</em></h1>
+      <p class="sub">Each envelope is a prediction locked on Solana devnet. Only its fingerprint is public until the author reveals it, and the program checks the reveal matches.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="n-sealed">0</b><span>Sealed</span></div>
+      <div class="stat"><b id="n-revealed">0</b><span>Revealed</span></div>
+      <div class="live" id="live"><i></i><span id="live-text">Not connected</span></div>
+    </div>
+  </header>
+
+  <form class="settings" id="settings">
+    <label for="program-id">Program ID</label>
+    <input id="program-id" placeholder="Paste the address from declare_id!(…) in lib.rs" autocomplete="off" spellcheck="false">
+    <button type="submit">Show board</button>
+  </form>
+
+  <p class="notice" id="notice" hidden></p>
+  <section class="board" id="board" aria-live="polite"></section>
+
+  <footer>
+    <p class="tagline">A tamper-proof “I called it” machine. Lock in a secret prediction on Solana now, and prove later that you made it first.</p>
+    <p>Refreshes every 5 seconds from <code>api.devnet.solana.com</code>. Click any envelope to open it in Solana Explorer.</p>
+  </footer>
+</div>
+
+<script>
+const RPC = "https://api.devnet.solana.com";
+const REFRESH_MS = 5000;
+// First 8 bytes of sha256("account:Prediction"): Anchor's marker for this account type.
+const DISCRIMINATOR_B58 = "HUZGyEuxwm7";
+
+const $ = (id) => document.getElementById(id);
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58(bytes) {
+  let n = 0n;
+  for (const b of bytes) n = n * 256n + BigInt(b);
+  let s = "";
+  while (n > 0n) { s = B58[Number(n % 58n)] + s; n /= 58n; }
+  for (const b of bytes) { if (b === 0) s = "1" + s; else break; }
+  return s;
+}
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const short = (s, a = 4, b = 4) => (s.length > a + b + 1 ? `${s.slice(0, a)}…${s.slice(-b)}` : s);
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Prediction layout (Borsh): disc 8 | author 32 | id u64 | hash 32 | committed_at i64 | revealed_at i64 | text (u32 len + bytes) | bump u8
+function parsePrediction(address, b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const v = new DataView(bytes.buffer);
+  const textLen = v.getUint32(96, true);
+  return {
+    address,
+    author: base58(bytes.subarray(8, 40)),
+    id: v.getBigUint64(40, true).toString(),
+    hash: hex(bytes.subarray(48, 80)),
+    committedAt: Number(v.getBigInt64(80, true)),
+    revealedAt: Number(v.getBigInt64(88, true)),
+    text: new TextDecoder().decode(bytes.subarray(100, 100 + textLen)),
+  };
+}
+
+async function fetchPredictions(programId) {
+  const res = await fetch(RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "getProgramAccounts",
+      params: [programId, { encoding: "base64", filters: [{ memcmp: { offset: 0, bytes: DISCRIMINATOR_B58 } }] }],
+    }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message);
+  return json.result
+    .map((a) => parsePrediction(a.pubkey, a.account.data[0]))
+    .sort((x, y) => x.committedAt - y.committedAt);
+}
+
+function ago(sec) {
+  const d = Math.max(0, Math.floor(Date.now() / 1000 - sec));
+  if (d < 60) return `${d}s ago`;
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+  return `${Math.floor(d / 86400)} d ago`;
+}
+const clock = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function gap(a, b) {
+  const m = Math.round((b - a) / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+const seenRevealed = new Set();
+let firstRender = true;
+
+function cardHtml(p, example) {
+  const revealed = p.revealedAt > 0;
+  const justRevealed = revealed && !firstRender && !seenRevealed.has(p.address);
+  const href = example ? "#" : `https://explorer.solana.com/address/${p.address}?cluster=devnet`;
+  return `
+  <a class="card${revealed ? " revealed" : ""}${justRevealed ? " just-revealed" : ""}${example ? " example" : ""}"
+     href="${href}" target="_blank" rel="noopener" data-addr="${p.address}">
+    <div class="inner">
+      <div class="face front">
+        <div class="seal" aria-hidden="true">#${escapeHtml(p.id)}</div>
+        <span class="tag">Sealed ${ago(p.committedAt)}</span>
+        <span class="fp" title="${p.hash}">${p.hash.slice(0, 10)}…${p.hash.slice(-6)}</span>
+        <div class="meta" style="width:100%"><span>by ${short(p.author)}</span><span>${clock(p.committedAt)}</span></div>
+      </div>
+      <div class="face back">
+        <span class="tag">Prediction #${escapeHtml(p.id)} · by ${short(p.author)}</span>
+        <p class="text">${escapeHtml(p.text)}</p>
+        <span class="verified">✓ Fingerprint matched on-chain</span>
+        <span class="timeline">Sealed ${clock(p.committedAt)} → revealed ${revealed ? clock(p.revealedAt) : "—"}${revealed ? `<br>${gap(p.committedAt, p.revealedAt)} in the envelope` : ""}</span>
+      </div>
+    </div>
+  </a>`;
+}
+
+function render(preds, example = false) {
+  $("board").innerHTML = preds.map((p) => cardHtml(p, example)).join("");
+  if (!example) {
+    preds.filter((p) => p.revealedAt > 0).forEach((p) => seenRevealed.add(p.address));
+    firstRender = false;
+  }
+  const revealed = preds.filter((p) => p.revealedAt > 0).length;
+  $("n-sealed").textContent = preds.length - revealed;
+  $("n-revealed").textContent = revealed;
+}
+
+function setLive(state, text) {
+  $("live").className = "live " + state;
+  $("live-text").textContent = text;
+}
+function setNotice(text, isErr = false) {
+  $("notice").hidden = !text;
+  $("notice").textContent = text || "";
+  $("notice").className = "notice" + (isErr ? " err" : "");
+}
+
+const now = Math.floor(Date.now() / 1000);
+const EXAMPLES = [
+  { address: "ex1", author: "Atv7HPNxnAG1hmrGUwCxD1cAPGPkgqeD7SRLvBHewEX2", id: "1", hash: "3fa94c0e1d8b2a7f6c5e4d3b2a19087f6e5d4c3b2a19f8e7d6c5b4a392817061", committedAt: now - 2400, revealedAt: now - 300, text: "The live demo will crash at least once" },
+  { address: "ex2", author: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", id: "1", hash: "b71c09e2f4a65d38c1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8", committedAt: now - 1800, revealedAt: 0, text: "" },
+  { address: "ex3", author: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", id: "2", hash: "0d4e8a1b6c3f5e7d9a2b4c6e8f0a1b3c5d7e9f1a3b5c7d9e0f2a4b6c8d0e1f3a", committedAt: now - 900, revealedAt: 0, text: "" },
+];
+
+let timer = null;
+let programId = "";
+
+async function refresh() {
+  try {
+    const preds = await fetchPredictions(programId);
+    render(preds);
+    setNotice(preds.length ? "" : "No predictions yet. Seal one by running client.ts in Playground with MODE = \"commit\".");
+    setLive("on", `Live · ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`);
+  } catch (e) {
+    setLive("err", "Can't reach devnet");
+    setNotice(`Couldn't load predictions: ${e.message}. Check the program ID and your internet connection; retrying automatically.`, true);
+  }
+}
+
+function start(id) {
+  programId = id.trim();
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(programId)) {
+    setNotice("That doesn't look like a program ID. Copy the address inside declare_id!(\"…\") at the top of lib.rs in Playground.", true);
+    return;
+  }
+  try { localStorage.setItem("predictionBoard.programId", programId); } catch {}
+  clearInterval(timer);
+  firstRender = true;
+  seenRevealed.clear();
+  setLive("", "Connecting…");
+  refresh();
+  timer = setInterval(refresh, REFRESH_MS);
+}
+
+$("settings").addEventListener("submit", (e) => { e.preventDefault(); start($("program-id").value); });
+$("board").addEventListener("click", (e) => { if (e.target.closest(".card.example")) e.preventDefault(); });
+
+let saved = new URLSearchParams(location.search).get("program") || "";
+if (!saved) { try { saved = localStorage.getItem("predictionBoard.programId") || ""; } catch {} }
+if (saved) {
+  $("program-id").value = saved;
+  start(saved);
+} else {
+  render(EXAMPLES, true);
+  setNotice("Showing example envelopes. Paste your program ID above to load the real board.");
+}
+</script>
+</body>
+</html>
